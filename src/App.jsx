@@ -158,6 +158,7 @@ function AdminDashboard() {
   const [potentialCases, setPotentialCases] = useState([]); 
   const [users, setUsers] = useState([]);
   const [injectStatus, setInjectStatus] = useState('');
+  const [rawTranscript, setRawTranscript] = useState('');
 
   useEffect(() => {
     if (!db) return;
@@ -184,6 +185,49 @@ function AdminDashboard() {
     } catch (e) { setInjectStatus("❌ 각인 실패"); }
   };
 
+  const handleFileUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setInjectStatus('파일 데이터 추출 중...');
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target.result;
+      setRawTranscript(prev => prev ? prev + '\n\n[신규 파일 추가됨]\n' + text : text);
+      setInjectStatus(`✅ 파일 로드 완료: ${file.name}`);
+      setTimeout(() => setInjectStatus(''), 3000);
+    };
+    reader.onerror = () => setInjectStatus('❌ 파일 읽기 실패');
+    reader.readAsText(file, "UTF-8"); 
+  };
+
+  const handleManualInject = async () => {
+    if (!rawTranscript.trim()) { setInjectStatus('주입할 데이터가 없습니다.'); return; }
+    setInjectStatus('🧠 AI 뇌세포로 변환 및 각인 중...');
+    try {
+      const injectVector = httpsCallable(functions, 'injectVectorData');
+      const vecResult = await injectVector({ text: rawTranscript });
+      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', WINNING_DATA_COLLECTION), {
+        raw_transcript: rawTranscript, 
+        vector: vecResult.data.vector, 
+        timestamp: new Date().toISOString(), 
+        type: 'core_sop'
+      });
+      setRawTranscript('');
+      setInjectStatus('✅ 지휘관 코어 데이터 각인 완료.');
+      setTimeout(() => setInjectStatus(''), 3000);
+    } catch (e) { setInjectStatus(`❌ 각인 실패: ${e.message}`); }
+  };
+
+  const toggleApproval = async (userId, currentStatus) => {
+    try { await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', DB_COLLECTION, userId), { isApproved: !currentStatus }); } 
+    catch (e) { console.error('승인 상태 변경 실패', e); }
+  };
+  
+  const toggleTrainingPass = async (userId, currentStatus) => {
+    try { await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', DB_COLLECTION, userId), { hasPassedTraining: !currentStatus }); } 
+    catch (e) { console.error('훈련 수료 상태 변경 실패', e); }
+  };
+
   return (
     <div className="flex-1 p-10 bg-slate-50 overflow-y-auto font-sans text-slate-900">
       <div className="max-w-7xl mx-auto space-y-10">
@@ -191,6 +235,68 @@ function AdminDashboard() {
           <div className="flex items-center gap-4">
             <div className="w-14 h-14 bg-red-600 rounded-2xl flex items-center justify-center text-white shadow-lg"><Shield size={32}/></div>
             <div><h2 className="text-4xl font-black tracking-tighter">통제 사령부</h2><p className="text-sm text-slate-500 font-bold">자가 진화 알고리즘 및 요원 관리</p></div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-3xl shadow-xl border border-slate-200 overflow-hidden">
+          <div className="p-6 border-b border-slate-100 bg-slate-50">
+            <h3 className="text-xl font-black text-slate-800 flex items-center gap-2"><User size={20} className="text-blue-600"/> 요원 접근 제어</h3>
+          </div>
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-slate-100/50 border-b border-slate-200 text-slate-500 text-xs uppercase font-black tracking-wider">
+                <th className="p-4 pl-6">가이아 사번</th> <th className="p-4">성함</th> <th className="p-4 text-center">시스템 접근 승인</th>
+                <th className="p-4 text-center">기초 훈련 수료 (실전 권한)</th> <th className="p-4">가입 일자</th>
+              </tr>
+            </thead>
+            <tbody className="text-sm text-slate-800 font-medium">
+              {users.map(user => (
+                <tr key={user.id} className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors">
+                  <td className="p-4 pl-6 font-mono font-bold text-blue-600">{user.gaiaId}</td> <td className="p-4 font-bold">{user.name}</td>
+                  <td className="p-4 text-center">
+                    <button onClick={() => toggleApproval(user.id, user.isApproved)} className={`px-4 py-1.5 rounded-full font-bold text-xs transition-colors ${user.isApproved ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' : 'bg-slate-100 text-slate-500 border border-slate-200'}`}>
+                      {user.isApproved ? '승인됨 (차단)' : '대기중 (승인)'}
+                    </button>
+                  </td>
+                  <td className="p-4 text-center">
+                    <button onClick={() => toggleTrainingPass(user.id, user.hasPassedTraining)} disabled={!user.isApproved} className={`px-4 py-1.5 rounded-full font-bold text-xs transition-colors ${!user.isApproved ? 'opacity-30 cursor-not-allowed bg-slate-100' : (user.hasPassedTraining ? 'bg-blue-100 text-blue-700 border border-blue-200' : 'bg-amber-100 text-amber-700 border border-amber-200')}`}>
+                      {user.hasPassedTraining ? '수료 완료 (실전 허용)' : '미수료 (훈련만 가능)'}
+                    </button>
+                  </td>
+                  <td className="p-4 text-xs text-slate-400 font-mono">{user.createdAt ? new Date(user.createdAt).toLocaleDateString() : 'N/A'}</td>
+                </tr>
+              ))}
+              {users.length === 0 && (<tr><td colSpan="5" className="p-8 text-center text-slate-400 font-bold">등록된 요원이 없습니다.</td></tr>)}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="bg-slate-900 p-10 rounded-[3rem] border border-slate-800 text-white shadow-2xl relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-80 h-80 bg-blue-600/10 rounded-full blur-[100px] pointer-events-none"></div>
+          
+          <div className="flex justify-between items-start mb-8 relative z-10">
+            <div>
+              <h3 className="text-2xl font-black flex items-center gap-3 text-blue-400"><Brain size={28}/> 전술 교리 주입기 (Vector DB)</h3>
+              <p className="text-sm text-slate-400 mt-2 font-medium">조직의 코어 성공 사례(CSV/Text)를 주입하여 AI의 기본 수학적 좌표를 세팅합니다.</p>
+            </div>
+            
+            <label className="bg-slate-800 border border-slate-700 px-6 py-3 rounded-xl text-xs font-black cursor-pointer hover:bg-slate-700 transition-all text-white shadow-lg flex items-center gap-2 active:scale-95">
+              <Upload size={16}/> CSV 파일 업로드
+              <input type="file" accept=".txt,.csv" className="hidden" onChange={handleFileUpload} />
+            </label>
+          </div>
+
+          <textarea 
+            value={rawTranscript} 
+            onChange={e => setRawTranscript(e.target.value)} 
+            className="w-full h-48 bg-slate-950/50 border border-slate-800 rounded-2xl p-6 text-sm font-mono text-slate-300 outline-none focus:border-blue-500 mb-6 relative z-10 shadow-inner leading-relaxed" 
+            placeholder="[성공 사례 직접 입력]&#13;&#10;고객 거절: 보험료가 너무 비싸서 유지가 힘들 것 같아요.&#13;&#10;나의 전술: 고객님, 당장 비용이 부담되시는 마음 충분히 이해합니다. 하지만..."
+          ></textarea>
+          
+          <div className="flex justify-end relative z-10">
+            <button onClick={handleManualInject} className="bg-blue-600 hover:bg-blue-500 px-10 py-4 rounded-2xl font-black text-sm active:scale-95 shadow-lg shadow-blue-900/20 transition-all flex items-center gap-2">
+              <Database size={18}/> 전술 좌표(Vector) 주입
+            </button>
           </div>
         </div>
 
