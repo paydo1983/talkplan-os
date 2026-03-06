@@ -1,16 +1,18 @@
 {
   "name": "talkplan-os",
+  "private": true,
   "version": "1.0.4",
   "main": "main.cjs",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "lint": "eslint .",
+    "preview": "vite preview",
     "electron:dev": "concurrently \"npm run dev\" \"wait-on http://localhost:5173 && electron .\"",
     "dist": "vite build && electron-builder --publish always"
   },
   "dependencies": {
-    "electron-updater": "^6.1.7",
     "firebase": "^11.0.0",
     "lucide-react": "^0.453.0",
     "react": "^18.3.1",
@@ -32,7 +34,7 @@
     "appId": "com.talkplan.os",
     "productName": "TalkPlanOS",
     "directories": {
-      "output": "release"
+      "output": "dist-electron"
     },
     "files": [
       "dist/**/*",
@@ -46,12 +48,7 @@
       }
     ],
     "win": {
-      "target": ["nsis"]
-    },
-    "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
-      "shortcutName": "TalkPlanOS"
+      "target": "nsis"
     }
   }
 }
