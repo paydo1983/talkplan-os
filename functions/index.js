@@ -3,7 +3,7 @@ const fetch = require("node-fetch");
 
 // 🚨 지휘관의 API 키
 const GEMINI_API_KEY = "AIzaSyDSXaSQjepkchEbBECY5SGIZ_TZJmniPxQ"; 
-const EMBEDDING_MODEL = "text-embedding-004"; 
+const EMBEDDING_MODEL = "gemini-embedding-001"; // 🚨 구형(text-embedding-004) 폐기, 신형 엔진 장착
 const GENERATIVE_MODEL = "gemini-2.5-flash";
 
 function getCosineSimilarity(vecA, vecB) {
@@ -29,6 +29,12 @@ async function getEmbedding(text) {
     })
   });
   const json = await response.json();
+  
+  // 🚨 [방어선 추가] 구글 API가 거부했을 때 진짜 원인을 화면에 뱉어내도록 수술
+  if (!response.ok || json.error) {
+    throw new Error(`Gemini API 거부: ${json.error?.message || response.status}`);
+  }
+  
   return json.embedding.values;
 }
 
@@ -85,6 +91,11 @@ exports.generateTacticAI = onCall(async (request) => {
     });
 
     const result = await response.json();
+    
+    // 🚨 생성형 AI 호출 시에도 에러 방어선 추가
+    if (!response.ok || result.error) {
+      throw new Error(`Gemini 생성 실패: ${result.error?.message || response.status}`);
+    }
     
     // AI 텍스트와 함께 벡터 매칭 데이터(matches)를 프론트엔드로 리턴
     return { 
